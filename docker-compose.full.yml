@@ -1,0 +1,48 @@
+services:
+  users-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fcg-users-api
+    ports:
+      - "5001:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Server=users-sqlserver,1433;Database=FCGUsersDb;User Id=sa;Password=senha123@#4l;TrustServerCertificate=True"
+      Jwt__SecretKey: "Q8m5L2b0V0xSgFJq9nR4pY7eTcW1uNzKk3XhM8aPvL2YzR5fGb1nC9wE6sDtQ7uH"
+      Jwt__Issuer: "FCG.Users.Api"
+      Jwt__Audience: "FCG.CloudGames"
+      Jwt__ExpirationMinutes: "60"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Port: "5672"
+      RabbitMq__VirtualHost: "/"
+      RabbitMq__Username: "rabbitmquser"
+      RabbitMq__Password: "rbmq2587!@"
+    depends_on:
+      - users-sqlserver
+      - rabbitmq
+
+  users-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: fcg-users-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "senha123@#4l"
+    ports:
+      - "1435:1433"
+    volumes:
+      - users_sqlserver_data:/var/opt/mssql
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: fcg-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "rabbitmquser"
+      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+volumes:
+  users_sqlserver_data:
