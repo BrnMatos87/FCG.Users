@@ -1,12 +1,14 @@
 ﻿namespace FCG.Users.Infrastructure.Security;
 
-public class JwtOptions
+public sealed class JwtOptions
 {
-    public string SecretKey { get; set; } = string.Empty;
+    public const string SectionName = "Jwt";
 
-    public string Issuer { get; set; } = string.Empty;
+    public string SecretKey { get; init; } = string.Empty;
 
-    public string Audience { get; set; } = string.Empty;
+    public string Issuer { get; init; } = string.Empty;
 
-    public int ExpirationMinutes { get; set; } = 60;
+    public string Audience { get; init; } = string.Empty;
+
+    public int ExpirationMinutes { get; init; }
 }
