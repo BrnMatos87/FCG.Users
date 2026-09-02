@@ -1,0 +1,19 @@
+services:
+
+  users-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: fcg-users-sqlserver
+
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "senha123@#4l"
+
+    ports:
+      - "1435:1433"
+
+    volumes:
+      - users_sqlserver_data:/var/opt/mssql
+
+
+volumes:
+  users_sqlserver_data:

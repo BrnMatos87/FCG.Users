@@ -12,6 +12,7 @@ using FCG.Users.Infrastructure.Extensions;
 using FCG.Users.Infrastructure.Persistence;
 using FCG.Users.Infrastructure.Persistence.Seeders;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -95,6 +96,10 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseHttpMetrics();
+
 app.MapControllers();
+
+app.MapMetrics();
 
 await app.RunAsync();
