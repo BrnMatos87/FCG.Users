@@ -20,15 +20,11 @@ services:
       Jwt__Audience: "FCG.CloudGames"
       Jwt__ExpirationMinutes: "180"
 
-      RabbitMq__Host: "rabbitmq"
-      RabbitMq__Port: "5672"
-      RabbitMq__VirtualHost: "/"
-      RabbitMq__Username: "rabbitmquser"
-      RabbitMq__Password: "rbmq2587!@"
+      Notifications__BaseUrl: "http://host.docker.internal:7071"
+      Notifications__FunctionKey: ""
 
     depends_on:
       - users-sqlserver
-      - rabbitmq
 
     networks:
       - fcg-network
@@ -47,22 +43,6 @@ services:
 
     volumes:
       - users_sqlserver_data:/var/opt/mssql
-
-    networks:
-      - fcg-network
-
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
-
-    environment:
-      RABBITMQ_DEFAULT_USER: "rabbitmquser"
-      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
-
-    ports:
-      - "5672:5672"
-      - "15672:15672"
 
     networks:
       - fcg-network

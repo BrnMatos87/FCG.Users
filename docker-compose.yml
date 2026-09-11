@@ -18,22 +18,6 @@ services:
       - fcg-network
 
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
-
-    environment:
-      RABBITMQ_DEFAULT_USER: "rabbitmquser"
-      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
-
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-
-    networks:
-      - fcg-network
-
-
   kong-database:
     image: postgres:11.16
     container_name: fcg-kong-database

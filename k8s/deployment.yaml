@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: fcg-users-api
-          image: brnmatos/fcg-users-api:1.0.1
+          image: brnmatos/fcg-users-api:1.0.2
 
           imagePullPolicy: IfNotPresent
 
