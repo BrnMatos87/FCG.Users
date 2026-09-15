@@ -3,11 +3,9 @@ using FCG.Users.Infrastructure.Messaging;
 using FCG.Users.Infrastructure.Persistence;
 using FCG.Users.Infrastructure.Repositories;
 using FCG.Users.Infrastructure.Security;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace FCG.Users.Infrastructure.Extensions;
 
@@ -19,12 +17,11 @@ public static class DependencyInjection
     {
         AddDatabase(services, configuration);
         AddJwt(services, configuration);
-        AddRabbitMq(services, configuration);
+        AddNotifications(services, configuration);
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<ITokenService, JwtTokenService>();
-        services.AddScoped<IUserEventPublisher, UserEventPublisher>();
         services.AddScoped<IPasswordPolicy, PasswordPolicy>();
 
         return services;
@@ -79,48 +76,28 @@ public static class DependencyInjection
             .ValidateOnStart();
     }
 
-    private static void AddRabbitMq(
+    private static void AddNotifications(
         IServiceCollection services,
         IConfiguration configuration)
     {
         services
-            .AddOptions<RabbitMqOptions>()
-            .Bind(configuration.GetSection(RabbitMqOptions.SectionName))
+            .AddOptions<NotificationsOptions>()
+            .Bind(configuration.GetSection(NotificationsOptions.SectionName))
             .Validate(
-                options => !string.IsNullOrWhiteSpace(options.Host),
-                "RabbitMq:Host não foi configurado.")
-            .Validate(
-                options => options.Port > 0,
-                "RabbitMq:Port deve ser maior que zero.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.VirtualHost),
-                "RabbitMq:VirtualHost não foi configurado.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.Username),
-                "RabbitMq:Username não foi configurado.")
-            .Validate(
-                options => !string.IsNullOrWhiteSpace(options.Password),
-                "RabbitMq:Password não foi configurado.")
+                options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _),
+                "Notifications:BaseUrl deve ser uma URL absoluta válida.")
             .ValidateOnStart();
 
-        services.AddMassTransit(x =>
+        services.AddHttpClient<IUserEventPublisher, UserEventPublisher>((serviceProvider, client) =>
         {
-            x.UsingRabbitMq((context, cfg) =>
-            {
-                var options = context
-                    .GetRequiredService<IOptions<RabbitMqOptions>>()
-                    .Value;
+            var options = serviceProvider
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationsOptions>>()
+                .Value;
 
-                cfg.Host(
-                    options.Host,
-                    options.Port,
-                    options.VirtualHost,
-                    hostConfiguration =>
-                    {
-                        hostConfiguration.Username(options.Username);
-                        hostConfiguration.Password(options.Password);
-                    });
-            });
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + '/');
+
+            if (!string.IsNullOrWhiteSpace(options.FunctionKey))
+                client.DefaultRequestHeaders.Add("x-functions-key", options.FunctionKey);
         });
     }
 }

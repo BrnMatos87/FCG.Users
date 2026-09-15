@@ -5,6 +5,7 @@ metadata:
   namespace: fcg
   labels:
     app: fcg-users-api
+
 spec:
   replicas: 1
 
@@ -16,11 +17,15 @@ spec:
     metadata:
       labels:
         app: fcg-users-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
 
     spec:
       containers:
         - name: fcg-users-api
-          image: brnmatos/fcg-users-api:1.0.1
+          image: brnmatos/fcg-users-api:1.0.2
 
           imagePullPolicy: IfNotPresent
 

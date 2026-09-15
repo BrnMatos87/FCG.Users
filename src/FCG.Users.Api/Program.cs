@@ -12,6 +12,8 @@ using FCG.Users.Infrastructure.Extensions;
 using FCG.Users.Infrastructure.Persistence;
 using FCG.Users.Infrastructure.Persistence.Seeders;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Trace;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +32,13 @@ if (builder.Environment.IsDevelopment() && !runningInContainer)
 }
 
 builder.Services.AddControllers();
+
+builder.Services
+    .AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .SetSampler(new AlwaysOnSampler())
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation());
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -95,6 +104,10 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseHttpMetrics();
+
 app.MapControllers();
+
+app.MapMetrics();
 
 await app.RunAsync();

@@ -1,48 +1,247 @@
 services:
+
   users-api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: fcg-users-api
+
     ports:
       - "5001:8080"
+
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+
       ConnectionStrings__DefaultConnection: "Server=users-sqlserver,1433;Database=FCGUsersDb;User Id=sa;Password=senha123@#4l;TrustServerCertificate=True"
+
       Jwt__SecretKey: "Q8m5L2b0V0xSgFJq9nR4pY7eTcW1uNzKk3XhM8aPvL2YzR5fGb1nC9wE6sDtQ7uH"
       Jwt__Issuer: "FCG.Users.Api"
       Jwt__Audience: "FCG.CloudGames"
-      Jwt__ExpirationMinutes: "60"
-      RabbitMq__Host: "rabbitmq"
-      RabbitMq__Port: "5672"
-      RabbitMq__VirtualHost: "/"
-      RabbitMq__Username: "rabbitmquser"
-      RabbitMq__Password: "rbmq2587!@"
+      Jwt__ExpirationMinutes: "180"
+
+      Notifications__BaseUrl: "http://host.docker.internal:7071"
+      Notifications__FunctionKey: ""
+
     depends_on:
       - users-sqlserver
-      - rabbitmq
+
+    networks:
+      - fcg-network
+
 
   users-sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: fcg-users-sqlserver
+
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "senha123@#4l"
+
     ports:
       - "1435:1433"
+
     volumes:
       - users_sqlserver_data:/var/opt/mssql
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
+    networks:
+      - fcg-network
+
+
+  # =========================================
+  # KONG - BANCO
+  # =========================================
+
+  kong-database:
+    image: postgres:11.16
+    container_name: fcg-kong-database
+
     environment:
-      RABBITMQ_DEFAULT_USER: "rabbitmquser"
-      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong
+      POSTGRES_DB: kong
+
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong -d kong"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - fcg-network
+
+
+  # Cria o banco separado usado pelo Konga
+  konga-db-create:
+    image: postgres:11.16
+    container_name: fcg-konga-db-create
+
+    environment:
+      PGPASSWORD: kong
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until pg_isready -h kong-database -U kong; do
+          sleep 2
+        done
+
+        if ! psql -h kong-database -U kong -d kong -tAc \
+          "SELECT 1 FROM pg_database WHERE datname='konga'" | grep -q 1; then
+          psql -h kong-database -U kong -d kong -c "CREATE DATABASE konga;"
+        fi
+
+    depends_on:
+      kong-database:
+        condition: service_healthy
+
+    networks:
+      - fcg-network
+
+
+  # =========================================
+  # KONG - MIGRATIONS
+  # =========================================
+
+  kong-migrations:
+    image: kong:3.4
+    container_name: fcg-kong-migrations
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        kong migrations bootstrap ||
+        (kong migrations up && kong migrations finish)
+
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+
+    depends_on:
+      kong-database:
+        condition: service_healthy
+
+    networks:
+      - fcg-network
+
+
+  # =========================================
+  # KONG - API GATEWAY
+  # =========================================
+
+  kong:
+    image: kong:3.4
+    container_name: fcg-kong
+
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_DATABASE: kong
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "8000:8000"
+      - "8001:8001"
+
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
+
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+    networks:
+      - fcg-network
+
+
+  # =========================================
+  # KONGA - PREPARAÇÃO DO BANCO
+  # =========================================
+
+  konga-prepare:
+    image: pantsel/konga:latest
+    container_name: fcg-konga-prepare
+
+    command:
+      - "-c"
+      - "prepare"
+      - "-a"
+      - "postgres"
+      - "-u"
+      - "postgresql://kong:kong@kong-database:5432/konga"
+
+    depends_on:
+      konga-db-create:
+        condition: service_completed_successfully
+
+    networks:
+      - fcg-network
+
+
+  # =========================================
+  # KONGA - INTERFACE WEB
+  # =========================================
+
+  konga:
+    image: pantsel/konga:latest
+    container_name: fcg-konga
+
+    environment:
+      NODE_ENV: production
+      TOKEN_SECRET: "fcg-konga-secret"
+
+      DB_ADAPTER: postgres
+      DB_HOST: kong-database
+      DB_PORT: "5432"
+      DB_USER: kong
+      DB_PASSWORD: kong
+      DB_DATABASE: konga
+
+    ports:
+      - "1337:1337"
+
+    depends_on:
+      konga-prepare:
+        condition: service_completed_successfully
+      kong:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - fcg-network
+
 
 volumes:
+
   users_sqlserver_data:
+
+  kong_data:
+
+
+networks:
+
+  fcg-network:
+    driver: bridge

@@ -1,633 +1,167 @@
 # FCG.Users
 
-Microsserviço responsável pelo cadastro, autenticação, autorização e gerenciamento de usuários da plataforma **FIAP Cloud Games (FCG)**.
+Microsserviço .NET 8 responsável por cadastro, autenticação, autorização e gerenciamento de usuários da FIAP Cloud Games.
 
-A aplicação foi desenvolvida em **.NET 8**, seguindo princípios de **Clean Architecture**, **DDD**, **CQRS**, **SOLID** e arquitetura orientada a eventos.
+## Arquitetura da Fase 3
 
----
+```text
+Cliente
+  -> Kong API Gateway
+     -> FCG.Users.Api
+        -> SQL Server
+        -> HTTP POST -> Azure Function FCG.Notifications
+        -> /metrics <- Prometheus <- Grafana
+```
+
+Na solução integrada, o Kong é o único ponto de entrada externo. Login e cadastro são públicos; as demais operações passam pela validação JWT do Gateway e continuam protegidas também pela API.
+
+A configuração oficial de Kong, Prometheus, Grafana e Kubernetes compartilhado está no `FCG.Orchestration`.
 
 ## Responsabilidades
 
-O `FCG.Users` é responsável por:
+- cadastrar e gerenciar usuários;
+- autenticar usuários e emitir tokens JWT;
+- persistir os dados no banco SQL Server exclusivo do serviço;
+- enviar os dados de usuário criado para Notifications via HTTP;
+- expor métricas no formato Prometheus.
 
-- cadastrar usuários;
-- autenticar usuários;
-- gerar tokens JWT;
-- autorizar o acesso aos recursos da plataforma;
-- consultar e gerenciar usuários;
-- publicar o evento `UserCreatedEvent` após a criação de um usuário.
+## Endpoints principais
 
-O evento publicado é consumido pelo microsserviço de notificações.
+| Método | Rota | Acesso no Kong |
+|---|---|---|
+| POST | `/api/v1/auth/login` | público |
+| POST | `/api/v1/users/register` | público |
+| POST | `/api/v1/users` | protegido |
+| GET | `/api/v1/users` | protegido |
+| GET | `/api/v1/users/{id}` | protegido |
+| PUT | `/api/v1/users/{id}` | protegido |
+| PATCH | `/api/v1/users/{id}/password` | protegido |
+| PATCH | `/api/v1/users/{id}/profile` | protegido |
+| PATCH | `/api/v1/users/{id}/activate` | protegido |
+| PATCH | `/api/v1/users/{id}/inactivate` | protegido |
 
----
+Swagger e o endpoint `/metrics` ficam disponíveis diretamente na API para desenvolvimento e coleta interna.
 
-## Arquitetura
+## Integração com Notifications
 
-A solução está dividida nas seguintes camadas:
-
-```text
-FCG.Users
-│
-├── src
-│   ├── FCG.Users.Api
-│   ├── FCG.Users.Application
-│   ├── FCG.Users.Domain
-│   └── FCG.Users.Infrastructure
-│
-├── tests
-│   └── FCG.Users.Tests
-│
-├── k8s
-│   ├── namespace.yaml
-│   ├── configmap.yaml
-│   ├── secret.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── sqlserver.yaml
-│   └── rabbitmq.yaml
-│
-├── Dockerfile
-├── docker-compose.yml
-├── docker-compose.full.yml
-├── NuGet.config
-└── README.md
-```
-
-### FCG.Users.Api
-
-Responsável por:
-
-- controllers;
-- configuração da aplicação;
-- Swagger/OpenAPI;
-- autenticação e autorização;
-- injeção de dependências;
-- middlewares;
-- exposição dos endpoints HTTP.
-
-### FCG.Users.Application
-
-Responsável por:
-
-- comandos e consultas;
-- handlers;
-- DTOs;
-- validações;
-- casos de uso;
-- orquestração da aplicação.
-
-### FCG.Users.Domain
-
-Responsável por:
-
-- entidades;
-- regras de negócio;
-- interfaces de domínio;
-- enums;
-- comportamentos do domínio.
-
-### FCG.Users.Infrastructure
-
-Responsável por:
-
-- persistência de dados;
-- Entity Framework Core;
-- SQL Server;
-- repositórios;
-- migrations;
-- configuração do RabbitMQ;
-- publicação de eventos de integração.
-
----
-
-## Tecnologias
-
-- .NET 8
-- ASP.NET Core
-- Entity Framework Core
-- SQL Server 2022
-- RabbitMQ
-- MassTransit
-- JWT
-- Swagger / OpenAPI
-- Docker
-- Docker Compose
-- Kubernetes
-- xUnit
-- NuGet
-
----
-
-## Dependência compartilhada
-
-O microsserviço utiliza o pacote:
+Depois de cadastrar o usuário, o serviço executa:
 
 ```text
-FCG.BuildingBlocks
+POST {Notifications__BaseUrl}/api/notifications/user-created
+x-functions-key: {Notifications__FunctionKey}  # quando configurada
+Body: UserCreatedEvent em JSON
 ```
 
-Referência utilizada nos projetos:
+A chamada usa `HttpClient` criado por `IHttpClientFactory`. Uma resposta HTTP não bem-sucedida é tratada como falha da publicação. Users não publica essa notificação no RabbitMQ e não depende do broker.
 
-```xml
-<PackageReference Include="FCG.BuildingBlocks" Version="1.0.1" />
-```
-
----
-
-## Banco de dados
-
-Banco utilizado:
-
-```text
-SQL Server 2022
-```
-
-O banco é utilizado exclusivamente pelo microsserviço de usuários, mantendo a autonomia de dados esperada em uma arquitetura de microsserviços.
-
-As migrations são executadas por meio do Entity Framework Core.
-
----
-
-## Mensageria
-
-Broker utilizado:
-
-```text
-RabbitMQ
-```
-
-Biblioteca utilizada:
-
-```text
-MassTransit
-```
-
-### Evento publicado
-
-```text
-UserCreatedEvent
-```
-
-Esse evento é publicado após o cadastro de um usuário e consumido pelo microsserviço de notificações.
-
-### Eventos consumidos
-
-Atualmente, o `FCG.Users` não consome eventos de outros microsserviços.
-
----
-
-## Variáveis de ambiente
-
-As configurações podem ser sobrescritas por variáveis de ambiente.
-
-No .NET, dois sublinhados (`__`) representam a separação entre seções do `appsettings`.
-
-Exemplo:
-
-```text
-ConnectionStrings__DefaultConnection
-```
-
-equivale a:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "..."
-  }
-}
-```
-
-### Variáveis utilizadas
+Configurações:
 
 | Variável | Finalidade | Sensível |
 |---|---|---|
-| `ASPNETCORE_ENVIRONMENT` | Ambiente da aplicação | Não |
-| `ASPNETCORE_URLS` | Endereço e porta da API | Não |
-| `ConnectionStrings__DefaultConnection` | Conexão com o SQL Server | Sim |
-| `Jwt__SecretKey` | Chave de assinatura do JWT | Sim |
-| `Jwt__Issuer` | Emissor do token | Não |
-| `Jwt__Audience` | Público do token | Não |
-| `Jwt__ExpirationMinutes` | Tempo de expiração do token | Não |
-| `RabbitMq__Host` | Host do RabbitMQ | Não |
-| `RabbitMq__Port` | Porta AMQP | Não |
-| `RabbitMq__VirtualHost` | Virtual host do RabbitMQ | Não |
-| `RabbitMq__Username` | Usuário do RabbitMQ | Sim |
-| `RabbitMq__Password` | Senha do RabbitMQ | Sim |
+| `Notifications__BaseUrl` | URL base da Azure Function | não |
+| `Notifications__FunctionKey` | Function Key enviada em `x-functions-key` | sim |
 
-No Kubernetes:
+Para desenvolvimento com Functions Core Tools, a URL normalmente é `http://localhost:7071`. Em containers, use `http://host.docker.internal:7071` quando a Function estiver no host.
 
-- configurações não sensíveis ficam no `ConfigMap`;
-- connection string, chave JWT e credenciais ficam no `Secret`.
+## JWT e Kong
 
-> Os valores presentes nos manifestos deste projeto são destinados apenas ao ambiente acadêmico e de demonstração. Em produção, recomenda-se utilizar um gerenciador de segredos, como Azure Key Vault, AWS Secrets Manager ou HashiCorp Vault.
+```text
+Issuer: FCG.Users.Api
+Audience: FCG.CloudGames
+Algorithm: HS256
+```
 
----
+O Kong localiza a credencial pelo claim `iss`. A chave `Jwt__SecretKey` deve ser idêntica na Users API, nas demais APIs e no Kong. O segredo não deve ser versionado.
 
-## Executando localmente
+No ambiente integrado, as rotas e o consumer JWT são declarados em `FCG.Orchestration/kong/kong.yml`; não há configuração manual obrigatória pelo Konga.
 
-### Pré-requisitos
+## Observabilidade
 
-- .NET SDK 8
-- Docker Desktop
-- SQL Server e RabbitMQ disponíveis
-- Git
+A API usa `prometheus-net.AspNetCore` e expõe:
 
-### Restaurar dependências
+```text
+GET /metrics
+```
+
+O Prometheus do Orchestration coleta esse endpoint, e o dashboard provisionado no Grafana apresenta throughput, latência, status HTTP e erros.
+
+## Configuração
+
+Principais variáveis:
+
+- `ConnectionStrings__DefaultConnection`
+- `Jwt__SecretKey`
+- `Jwt__Issuer`
+- `Jwt__Audience`
+- `Jwt__ExpirationMinutes`
+- `Notifications__BaseUrl`
+- `Notifications__FunctionKey`
+
+Use `appsettings.Local.json` somente para valores locais não versionados. Secrets devem vir de variáveis de ambiente, Docker secrets, Kubernetes Secrets ou gerenciador externo.
+
+## Execução local
 
 ```powershell
 dotnet restore --configfile .\NuGet.config
-```
-
-### Compilar
-
-```powershell
-dotnet build --no-restore
-```
-
-### Executar os testes
-
-```powershell
+dotnet build
 dotnet test
+dotnet run --project .\src\FCG.Users.Api
 ```
 
-### Executar a API
+O perfil local expõe normalmente:
 
-```powershell
-dotnet run --project .\src\FCG.Users.Api\FCG.Users.Api.csproj
-```
-
-O endereço será exibido no terminal durante a inicialização.
-
-Swagger:
-
-```text
-http://localhost:<porta>/swagger
-```
-
----
+- Swagger: `http://localhost:5001/swagger`
+- métricas: `http://localhost:5001/metrics`
 
 ## Docker
 
-O `Dockerfile` utiliza **multi-stage build**.
-
-A primeira etapa utiliza o SDK do .NET para restaurar, compilar e publicar a aplicação. A imagem final contém apenas o runtime e os arquivos publicados.
-
-### Gerar a imagem
+Build da API:
 
 ```powershell
-docker build -t brnmatos/fcg-users-api:1.0.0 .
+docker build -f Dockerfile -t brnmatos/fcg-users-api:1.0.2 .
 ```
 
-### Executar o container
-
-Para execução isolada, a API precisa receber as configurações de banco e RabbitMQ por variáveis de ambiente e estar conectada à mesma rede da infraestrutura.
-
-Exemplo simplificado:
-
-```powershell
-docker run -d `
-  --name fcg-users-api `
-  -p 5001:8080 `
-  brnmatos/fcg-users-api:1.0.0
-```
-
-Swagger:
-
-```text
-http://localhost:5001/swagger
-```
-
-### Imagem publicada
-
-```text
-brnmatos/fcg-users-api:1.0.0
-```
-
----
-
-## Docker Compose
-
-### Subir somente a infraestrutura
-
-O arquivo `docker-compose.yml` inicia:
-
-- SQL Server;
-- RabbitMQ.
-
-```powershell
-docker compose up -d
-```
-
-### Subir a aplicação completa
-
-O arquivo `docker-compose.full.yml` inicia:
-
-- API de usuários;
-- SQL Server;
-- RabbitMQ.
-
-```powershell
-docker compose -f docker-compose.full.yml up -d --build
-```
-
-### Verificar os containers
-
-```powershell
-docker ps
-```
-
-### Acompanhar os logs
-
-```powershell
-docker compose -f docker-compose.full.yml logs -f
-```
-
-### Encerrar
-
-```powershell
-docker compose -f docker-compose.full.yml down
-```
-
-Para também remover volumes:
-
-```powershell
-docker compose -f docker-compose.full.yml down -v
-```
-
----
+O `docker-compose.full.yml` mantém uma opção isolada para desenvolvimento do serviço. Para executar a arquitetura completa e reproduzível da Fase 3, use o `docker-compose.yml` do `FCG.Orchestration`, no qual a API é interna e acessada pelo Kong.
 
 ## Kubernetes
 
-Os manifestos estão na pasta:
-
-```text
-k8s
-```
-
-Todos os recursos são criados no namespace:
-
-```text
-fcg
-```
-
-### Recursos disponíveis
-
-| Arquivo | Recurso |
-|---|---|
-| `namespace.yaml` | Namespace `fcg` |
-| `configmap.yaml` | Configurações não sensíveis |
-| `secret.yaml` | Credenciais e connection string |
-| `deployment.yaml` | Deployment da API |
-| `service.yaml` | Service interno da API |
-| `sqlserver.yaml` | Deployment, Service e PVC do SQL Server |
-| `rabbitmq.yaml` | Deployment e Service do RabbitMQ |
-
-### Aplicar os manifestos
-
-Crie primeiro o namespace:
+Os manifests em `k8s/` permitem desenvolvimento isolado da Users. Na implantação integrada, use os manifests e o Kustomize do `FCG.Orchestration`:
 
 ```powershell
-kubectl apply -f .\k8s\namespace.yaml
+kubectl apply -k .
 ```
 
-Depois aplique os demais arquivos:
+Nesse ambiente:
 
-```powershell
-kubectl apply -f .\k8s\
-```
+- `users-api` é `ClusterIP` na porta `8080`;
+- somente o proxy do Kong é `LoadBalancer`;
+- SQL Server possui PVC;
+- configurações não sensíveis ficam em ConfigMap;
+- connection string, segredo JWT e Function Key ficam em Secret;
+- readiness/liveness probes e requests/limits ficam no Deployment.
 
-### Verificar os recursos
-
-```powershell
-kubectl get all -n fcg
-```
-
-```powershell
-kubectl get pods -n fcg
-```
-
-```powershell
-kubectl get services -n fcg
-```
-
-```powershell
-kubectl get configmaps -n fcg
-```
-
-```powershell
-kubectl get secrets -n fcg
-```
-
-```powershell
-kubectl get pvc -n fcg
-```
-
-### Acompanhar os logs da API
-
-```powershell
-kubectl logs -f deployment/fcg-users-api -n fcg
-```
-
-### Acessar a API
-
-O serviço da API está configurado como **LoadBalancer**, permitindo acesso externo sem a necessidade de utilizar `kubectl port-forward`.
-
-Para identificar o endereço disponível:
-
-```powershell
-kubectl get svc users-api -n fcg
-```
-
-Exemplo:
-
-```text
-NAME        TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)
-users-api   LoadBalancer   10.96.xxx.xxx   127.0.0.1      5001:xxxxx/TCP
-```
-
-Acesse o Swagger utilizando o endereço informado na coluna **EXTERNAL-IP**:
-
-```text
-http://<EXTERNAL-IP>:5001/swagger
-```
-
-No Docker Desktop, normalmente o endereço será:
-
-```text
-http://127.0.0.1:5001/swagger
-```
-
-### Acessar o RabbitMQ Management
-
-O RabbitMQ está configurado como **ClusterIP**.
-
-Para acessar o painel administrativo:
-
-```powershell
-kubectl port-forward service/rabbitmq 15672:15672 -n fcg
-```
-
-Depois acesse:
-
-```text
-http://127.0.0.1:15672
-```
-
-### Acessando o SQL Server pelo SQL Server Management Studio (SSMS)
-
-O serviço do SQL Server está configurado como **ClusterIP**, portanto ele é acessível apenas pelos Pods dentro do cluster Kubernetes.
-
-Para realizar conexões administrativas a partir da máquina local, utilize o comando abaixo para criar um túnel temporário entre o computador e o serviço do SQL Server:
-
-```powershell
-kubectl port-forward service/users-sqlserver 1436:1433 -n fcg
-```
-
-Enquanto o comando permanecer em execução, será possível conectar ao banco utilizando o SQL Server Management Studio (SSMS) com as seguintes configurações:
-
-| Configuração | Valor |
-|--------------|-------|
-| Servidor | `127.0.0.1,1436` |
-| Autenticação | SQL Server Authentication |
-| Usuário | `sa` |
-| Senha | A mesma configurada no `secret.yaml` |
-
-> **Importante:** o `port-forward` permanece ativo apenas enquanto o terminal estiver aberto. Ao encerrá-lo, a conexão com o SQL Server será interrompida.
-
-### Remover os recursos
-
-```powershell
-kubectl delete -f .\k8s\ -n fcg
-```
-
-Depois, se necessário:
-
-```powershell
-kubectl delete namespace fcg
-```
-
----
-
-## Comunicação dentro do Kubernetes
-
-Os componentes utilizam os nomes dos Services do Kubernetes.
-
-### SQL Server
-
-```text
-users-sqlserver:1433
-```
-
-### RabbitMQ
-
-```text
-rabbitmq:5672
-```
-
-### API de usuários
-
-```text
-users-api:80
-```
-
-Dentro de um container ou Pod, não deve ser utilizado `localhost` para acessar outro serviço.
-
----
-
-## Testes
-
-Os testes estão no projeto:
-
-```text
-tests/FCG.Users.Tests
-```
-
-Executar:
-
-```powershell
-dotnet test
-```
-
-Executar em modo Release:
-
-```powershell
-dotnet test -c Release
-```
-
----
+O `Notifications__BaseUrl` deve apontar para a Azure Function publicada, nunca para `fcg-notifications-functions` no cluster integrado.
 
 ## Fluxo de cadastro
 
 ```text
-Cliente
-   |
-   v
-FCG.Users
-   |
-   | cadastra o usuário
-   |
-   v
-SQL Server
-   |
-   | publica UserCreatedEvent
-   |
-   v
-RabbitMQ
-   |
-   v
-FCG.Notifications
-   |
-   | simula o envio
-   |
-   v
-E-mail de boas-vindas
+Cliente -> Kong -> Users API -> SQL Server
+                            -> POST /api/notifications/user-created
+                               -> Azure Function -> notificação de boas-vindas
 ```
-
----
-
-## CI/CD
-
-O repositório está preparado para receber um pipeline com as seguintes etapas:
-
-```text
-Restore
-   |
-   v
-Build
-   |
-   v
-Testes
-   |
-   v
-Docker Build
-   |
-   v
-Docker Push
-   |
-   v
-Deploy Kubernetes
-```
-
-A branch `main` utiliza regras de proteção e exige Pull Request para alterações.
-
----
 
 ## Segurança
 
-- credenciais não devem ser mantidas no Dockerfile;
-- senhas não devem ser gravadas diretamente no código;
-- o `ConfigMap` não deve armazenar informações sensíveis;
-- o `Secret` deve ser utilizado para credenciais;
-- tokens e API Keys não devem ser versionados;
-- em produção, recomenda-se um gerenciador externo de segredos.
+- não versione JWT secret, Function Key ou connection string;
+- mantenha login e registro como únicas rotas públicas de Users no Kong;
+- preserve a validação JWT da própria API;
+- exponha a API apenas internamente no Kubernetes integrado;
+- armazene secrets em mecanismo apropriado ao ambiente.
 
----
+## Relação com os requisitos da Fase 3
 
-## Autor
-
-**Bruno Matos**
-
-Pós-graduação em Arquitetura de Software — FIAP
-
-Projeto desenvolvido para o Tech Challenge da FIAP, utilizando arquitetura de microsserviços, mensageria, Docker, Kubernetes e boas práticas de desenvolvimento em .NET.
+- API Gateway: atendido pelo Kong versionado no Orchestration;
+- JWT: validado no Kong e na API;
+- observabilidade: `/metrics` coletado por Prometheus e visualizado no Grafana;
+- serverless: integração HTTP com a FCG.Notifications executada como Azure Function;
+- RabbitMQ: não faz parte do fluxo de Users.
