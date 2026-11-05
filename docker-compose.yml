@@ -6,7 +6,7 @@ services:
 
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "senha123@#4l"
+      MSSQL_SA_PASSWORD: "${USERS_SQL_PASSWORD:?Defina USERS_SQL_PASSWORD no arquivo .env}"
 
     ports:
       - "1435:1433"
@@ -24,7 +24,7 @@ services:
 
     environment:
       POSTGRES_USER: kong
-      POSTGRES_PASSWORD: kong
+      POSTGRES_PASSWORD: "${KONG_DB_PASSWORD:?Defina KONG_DB_PASSWORD no arquivo .env}"
       POSTGRES_DB: kong
 
     volumes:
@@ -51,7 +51,7 @@ services:
       KONG_PG_HOST: kong-database
       KONG_PG_DATABASE: kong
       KONG_PG_USER: kong
-      KONG_PG_PASSWORD: kong
+      KONG_PG_PASSWORD: "${KONG_DB_PASSWORD:?Defina KONG_DB_PASSWORD no arquivo .env}"
 
     depends_on:
       kong-database:
@@ -72,7 +72,7 @@ services:
       KONG_PG_HOST: kong-database
       KONG_PG_DATABASE: kong
       KONG_PG_USER: kong
-      KONG_PG_PASSWORD: kong
+      KONG_PG_PASSWORD: "${KONG_DB_PASSWORD:?Defina KONG_DB_PASSWORD no arquivo .env}"
 
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
@@ -101,7 +101,7 @@ services:
 
     environment:
       POSTGRES_USER: konga
-      POSTGRES_PASSWORD: konga
+      POSTGRES_PASSWORD: "${KONG_DB_PASSWORD:?Defina KONG_DB_PASSWORD no arquivo .env}"
       POSTGRES_DB: konga
 
     volumes:
@@ -141,12 +141,12 @@ services:
     container_name: fcg-konga
 
     environment:
-      TOKEN_SECRET: "fcg-konga-secret"
+      TOKEN_SECRET: "${KONGA_TOKEN_SECRET:?Defina KONGA_TOKEN_SECRET no arquivo .env}"
       DB_ADAPTER: postgres
       DB_HOST: konga-database
       DB_PORT: "5432"
       DB_USER: konga
-      DB_PASSWORD: konga
+      DB_PASSWORD: "${KONG_DB_PASSWORD:?Defina KONG_DB_PASSWORD no arquivo .env}"
       DB_DATABASE: konga
       NODE_ENV: production
 

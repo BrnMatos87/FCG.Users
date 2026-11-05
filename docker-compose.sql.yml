@@ -6,7 +6,7 @@ services:
 
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "senha123@#4l"
+      MSSQL_SA_PASSWORD: "${USERS_SQL_PASSWORD:?Defina USERS_SQL_PASSWORD no arquivo .env}"
 
     ports:
       - "1435:1433"
