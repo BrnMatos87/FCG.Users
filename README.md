@@ -123,9 +123,17 @@ docker build -f Dockerfile -t brnmatos/fcg-users-api:1.0.2 .
 
 O `docker-compose.full.yml` mantém uma opção isolada para desenvolvimento do serviço. Para executar a arquitetura completa e reproduzível da Fase 3, use o `docker-compose.yml` do `FCG.Orchestration`, no qual a API é interna e acessada pelo Kong.
 
+Para usar os arquivos Compose locais, crie o arquivo de variáveis e preencha
+todos os campos antes de iniciar os containers:
+
+```powershell
+Copy-Item .env.example .env
+docker compose --env-file .env up -d
+```
+
 ## Kubernetes
 
-Os manifests em `k8s/` permitem desenvolvimento isolado da Users. Na implantação integrada, use os manifests e o Kustomize do `FCG.Orchestration`:
+O `FCG.Orchestration` é a fonte única dos manifests Kubernetes. A pasta `k8s/` deste repositório contém somente um README com os links para os arquivos oficiais. Para implantar a solução, execute no repositório de orquestração:
 
 ```powershell
 kubectl apply -k .

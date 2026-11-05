@@ -13,7 +13,7 @@ public class JwtTokenServiceTests
     {
         var options = Options.Create(new JwtOptions
         {
-            SecretKey = "Q8m5L2b0V0xSgFJq9nR4pY7eTcW1uNzKk3XhM8aPvL2YzR5fGb1nC9wE6sDtQ7uH",
+            SecretKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64)),
             Issuer = "FCG.Users.Api",
             Audience = "FCG.CloudGames",
             ExpirationMinutes = 60
