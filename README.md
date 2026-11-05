@@ -125,7 +125,7 @@ O `docker-compose.full.yml` mantém uma opção isolada para desenvolvimento do 
 
 ## Kubernetes
 
-Os manifests em `k8s/` permitem desenvolvimento isolado da Users. Na implantação integrada, use os manifests e o Kustomize do `FCG.Orchestration`:
+O `FCG.Orchestration` é a fonte única dos manifests Kubernetes. A pasta `k8s/` deste repositório contém somente um README com os links para os arquivos oficiais. Para implantar a solução, execute no repositório de orquestração:
 
 ```powershell
 kubectl apply -k .
