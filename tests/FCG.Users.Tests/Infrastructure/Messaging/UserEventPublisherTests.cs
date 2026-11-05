@@ -47,9 +47,9 @@ public class UserEventPublisherTests
         Assert.Equal(message.CorrelationId, request?.CorrelationId);
     }
 
-    [Fact(DisplayName = "Propagando falha HTTP do Notifications")]
+    [Fact(DisplayName = "Não interrompendo cadastro quando Notifications retorna erro HTTP")]
     [Trait("Categoria", "Infrastructure - Messaging")]
-    public async Task PublishUserCreatedEvent_NotificationFailure_ShouldThrow()
+    public async Task PublishUserCreatedEvent_NotificationFailure_ShouldNotThrow()
     {
         var httpClient = new HttpClient(
             new RecordingHttpMessageHandler(HttpStatusCode.InternalServerError))
@@ -66,8 +66,34 @@ public class UserEventPublisherTests
             CorrelationId = Guid.NewGuid()
         };
 
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
+        var exception = await Record.ExceptionAsync(() =>
             publisher.PublishUserCreatedAsync(message));
+
+        Assert.Null(exception);
+    }
+
+    [Fact(DisplayName = "Não interrompendo cadastro quando Notifications está indisponível")]
+    [Trait("Categoria", "Infrastructure - Messaging")]
+    public async Task PublishUserCreatedEvent_NotificationUnavailable_ShouldNotThrow()
+    {
+        var httpClient = new HttpClient(new UnavailableHttpMessageHandler())
+        {
+            BaseAddress = new Uri("https://notifications.test/")
+        };
+        var publisher = new UserEventPublisher(
+            httpClient,
+            Mock.Of<ILogger<UserEventPublisher>>());
+
+        var message = new UserCreatedEvent
+        {
+            UserId = Guid.NewGuid(),
+            CorrelationId = Guid.NewGuid()
+        };
+
+        var exception = await Record.ExceptionAsync(() =>
+            publisher.PublishUserCreatedAsync(message));
+
+        Assert.Null(exception);
     }
 
     private sealed class RecordingHttpMessageHandler : HttpMessageHandler
@@ -90,6 +116,16 @@ public class UserEventPublisherTests
             Request = request;
             Body = await request.Content!.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(_statusCode);
+        }
+    }
+
+    private sealed class UnavailableHttpMessageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            throw new HttpRequestException("Notifications indisponível.");
         }
     }
 }

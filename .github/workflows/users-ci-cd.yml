@@ -1,0 +1,126 @@
+name: Users - CI/CD
+
+on:
+  push:
+    branches:
+      - fase4
+      - main
+  pull_request:
+    branches:
+      - fase4
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: users-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: 8.0.x
+  TEST_PROJECT: tests/FCG.Users.Tests/FCG.Users.Tests.csproj
+  ACR_NAME: acrfcgfase41htwn9
+  ACR_LOGIN_SERVER: acrfcgfase41htwn9.azurecr.io
+  IMAGE_NAME: fcg-users-api
+  AKS_RESOURCE_GROUP: rg-fcg-fase4
+  AKS_NAME: aks-fcg-fase4
+  K8S_NAMESPACE: fcg
+  K8S_DEPLOYMENT: fcg-users-api
+  K8S_CONTAINER: fcg-users-api
+
+jobs:
+  ci:
+    name: Testar e validar imagem
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restaurar dependências
+        run: dotnet restore "${TEST_PROJECT}" --configfile NuGet.config
+
+      - name: Executar testes
+        run: dotnet test "${TEST_PROJECT}" --configuration Release --no-restore
+
+      - name: Validar Docker build
+        run: docker build --file Dockerfile --tag ${{ env.IMAGE_NAME }}:ci .
+
+  publish:
+    name: Publicar imagem no ACR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no Azure com OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Autenticar no ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Construir e publicar imagem
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file Dockerfile \
+            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            .
+          docker push "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+  deploy:
+    name: Implantar no AKS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Autenticar no Azure com OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Obter credenciais do AKS
+        run: |
+          az aks get-credentials \
+            --resource-group "${AKS_RESOURCE_GROUP}" \
+            --name "${AKS_NAME}" \
+            --admin \
+            --overwrite-existing
+
+      - name: Atualizar imagem do Users
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          kubectl set image \
+            "deployment/${K8S_DEPLOYMENT}" \
+            "${K8S_CONTAINER}=${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --namespace "${K8S_NAMESPACE}"
+
+          kubectl rollout status \
+            "deployment/${K8S_DEPLOYMENT}" \
+            --namespace "${K8S_NAMESPACE}" \
+            --timeout=180s

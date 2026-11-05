@@ -91,7 +91,17 @@ using (var scope = app.Services.CreateScope())
 
     await dbContext.Database.MigrateAsync();
 
-    await UsersDbSeeder.SeedAsync(dbContext);
+    var adminEmail = builder.Configuration["AdminSeed:Email"]
+        ?? throw new InvalidOperationException(
+            "A configuração AdminSeed:Email é obrigatória.");
+    var adminPassword = builder.Configuration["AdminSeed:Password"]
+        ?? throw new InvalidOperationException(
+            "A configuração AdminSeed:Password é obrigatória.");
+
+    await UsersDbSeeder.SeedAsync(
+        dbContext,
+        adminEmail,
+        adminPassword);
 }
 
 app.UseSwagger();

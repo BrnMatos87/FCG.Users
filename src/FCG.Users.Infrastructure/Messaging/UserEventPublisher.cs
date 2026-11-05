@@ -23,23 +23,37 @@ public class UserEventPublisher : IUserEventPublisher
         UserCreatedEvent message,
         CancellationToken ct = default)
     {
-        using var response = await _httpClient.PostAsJsonAsync(
-            UserCreatedRoute,
-            message,
-            ct);
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync(
+                UserCreatedRoute,
+                message,
+                ct);
 
-        if (response.IsSuccessStatusCode)
-            return;
+            if (response.IsSuccessStatusCode)
+                return;
 
-        _logger.LogError(
-            "Falha ao chamar Notifications para o usuário {UserId}. StatusCode: {StatusCode}, CorrelationId: {CorrelationId}",
-            message.UserId,
-            (int)response.StatusCode,
-            message.CorrelationId);
-
-        throw new HttpRequestException(
-            $"Notifications retornou HTTP {(int)response.StatusCode} para UserCreated.",
-            null,
-            response.StatusCode);
+            _logger.LogWarning(
+                "Notifications indisponível para o usuário {UserId}. StatusCode: {StatusCode}, CorrelationId: {CorrelationId}",
+                message.UserId,
+                (int)response.StatusCode,
+                message.CorrelationId);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Não foi possível acessar Notifications para o usuário {UserId}. CorrelationId: {CorrelationId}",
+                message.UserId,
+                message.CorrelationId);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                ex,
+                "Timeout ao acessar Notifications para o usuário {UserId}. CorrelationId: {CorrelationId}",
+                message.UserId,
+                message.CorrelationId);
+        }
     }
 }

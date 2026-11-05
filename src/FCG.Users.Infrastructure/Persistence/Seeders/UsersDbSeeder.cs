@@ -6,9 +6,15 @@ namespace FCG.Users.Infrastructure.Persistence.Seeders;
 
 public static class UsersDbSeeder
 {
-    public static async Task SeedAsync(UsersDbContext context)
+    public static async Task SeedAsync(
+        UsersDbContext context,
+        string adminEmail,
+        string adminPassword)
     {
-        const string adminEmail = "admin@fcg.com";
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminEmail);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminPassword);
+
+        adminEmail = adminEmail.Trim().ToLowerInvariant();
 
         var adminExists = await context.Users
             .AnyAsync(x => x.Email == adminEmail);
@@ -16,7 +22,7 @@ public static class UsersDbSeeder
         if (adminExists)
             return;
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword);
 
         var admin = User.Create(
             "Administrator",
