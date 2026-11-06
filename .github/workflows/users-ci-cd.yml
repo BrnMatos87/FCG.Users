@@ -83,8 +83,10 @@ jobs:
           docker build \
             --file Dockerfile \
             --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            --tag "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest" \
             .
           docker push "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
+          docker push "${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest"
 
   deploy:
     name: Implantar no AKS
