@@ -2,7 +2,7 @@
 
 Microsserviço .NET 8 responsável por cadastro, autenticação, autorização e gerenciamento de usuários da FIAP Cloud Games.
 
-## Arquitetura da Fase 3
+## Arquitetura da Fase 4
 
 ```text
 Cliente
@@ -118,10 +118,10 @@ O perfil local expõe normalmente:
 Build da API:
 
 ```powershell
-docker build -f Dockerfile -t brnmatos/fcg-users-api:1.0.2 .
+docker build -f Dockerfile -t fcg-users-api:latest .
 ```
 
-O `docker-compose.full.yml` mantém uma opção isolada para desenvolvimento do serviço. Para executar a arquitetura completa e reproduzível da Fase 3, use o `docker-compose.yml` do `FCG.Orchestration`, no qual a API é interna e acessada pelo Kong.
+O `docker-compose.full.yml` mantém uma opção isolada para desenvolvimento do serviço. Para executar a arquitetura completa e reproduzível da Fase 4, use o `docker-compose.yml` do `FCG.Orchestration`, no qual a API é interna e acessada pelo Kong.
 
 Para usar os arquivos Compose locais, crie o arquivo de variáveis e preencha
 todos os campos antes de iniciar os containers:
@@ -166,10 +166,11 @@ Cliente -> Kong -> Users API -> SQL Server
 - exponha a API apenas internamente no Kubernetes integrado;
 - armazene secrets em mecanismo apropriado ao ambiente.
 
-## Relação com os requisitos da Fase 3
+## Relação com os requisitos da Fase 4
 
-- API Gateway: atendido pelo Kong versionado no Orchestration;
-- JWT: validado no Kong e na API;
-- observabilidade: `/metrics` coletado por Prometheus e visualizado no Grafana;
-- serverless: integração HTTP com a FCG.Notifications executada como Azure Function;
-- RabbitMQ: não faz parte do fluxo de Users.
+- CI/CD mínimo obrigatório: a pipeline executa build, testes, Docker build, push no ACR e rolling update no AKS;
+- versionamento: cada merge na `main` publica uma tag imutável com o SHA e atualiza o alias `latest`;
+- produção gerenciada: a API é executada no AKS e exposta somente pelo Load Balancer do Kong;
+- segurança: connection string, JWT e Function Key são injetados por Kubernetes Secret;
+- portabilidade: o Deployment oficial está centralizado no `FCG.Orchestration`;
+- funcionalidades herdadas: JWT continua validado no Kong e na API, e `/metrics` permanece disponível para Prometheus.
